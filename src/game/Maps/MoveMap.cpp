@@ -165,8 +165,8 @@ bool MMapManager::loadMap(uint32 mapId, int32 x, int32 y)
     {
         sLog.outError("MMAP:loadMap: %03u%02i%02i.mmtile was built with generator v%i, expected v%i",
                       mapId, x, y, fileHeader.mmapVersion, MMAP_VERSION);
-        fclose(file);
-        return false;
+        //fclose(file);
+        //return false;
     }
 
     unsigned char* data = (unsigned char*)dtAlloc(fileHeader.size, DT_ALLOC_PERM);
@@ -377,8 +377,8 @@ bool MMapManager::loadGameObject(uint32 displayId)
     {
         sLog.outError("MMAP:loadGameObject: %s was built with generator v%i, expected v%i",
                       fileName, fileHeader.mmapVersion, MMAP_VERSION);
-        fclose(file);
-        return false;
+        //fclose(file);
+        //return false;
     }
     unsigned char* data = (unsigned char*)dtAlloc(fileHeader.size, DT_ALLOC_PERM);
     MANGOS_ASSERT(data);
