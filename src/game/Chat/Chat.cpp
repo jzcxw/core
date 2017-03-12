@@ -361,9 +361,9 @@ ChatCommand * ChatHandler::getCommandTable()
         { NODE, "all_crafts",     SEC_GAMEMASTER,     false, &ChatHandler::HandleLearnAllCraftsCommand,      "", nullptr },
         { NODE, "all_default",    SEC_MODERATOR,      false, &ChatHandler::HandleLearnAllDefaultCommand,     "", nullptr },
         { NODE, "all_lang",       SEC_MODERATOR,      false, &ChatHandler::HandleLearnAllLangCommand,        "", nullptr },
-        { NODE, "all_myclass",    SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMyClassCommand,     "", nullptr },
-        { NODE, "all_myspells",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMySpellsCommand,    "", nullptr },
-        { NODE, "all_mytalents",  SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnAllMyTalentsCommand,   "", nullptr },
+        { NODE, "all_myclass",    SEC_GAMEMASTER,  false, &ChatHandler::HandleLearnAllMyClassCommand,     "", nullptr },
+        { NODE, "all_myspells",   SEC_GAMEMASTER,  false, &ChatHandler::HandleLearnAllMySpellsCommand,    "", nullptr },
+        { NODE, "all_mytalents",  SEC_GAMEMASTER,  false, &ChatHandler::HandleLearnAllMyTalentsCommand,   "", nullptr },
         { NODE, "all_recipes",    SEC_GAMEMASTER,     false, &ChatHandler::HandleLearnAllRecipesCommand,     "", nullptr },
         { NODE, "",               SEC_ADMINISTRATOR,  false, &ChatHandler::HandleLearnCommand,               "", nullptr },
         { MSTR, nullptr,       0,                  false, nullptr,                                           "", nullptr }
