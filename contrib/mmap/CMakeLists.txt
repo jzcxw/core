@@ -48,7 +48,7 @@ add_library(vmap
 	../../src/game/vmap/ModelInstance.cpp
 )
 
-target_link_libraries(vmap g3dlite zlib)
+target_link_libraries(vmap g3dlite zlib ACE)
 
 add_library(Recast
     ../../dep/recastnavigation/Recast/Source/Recast.cpp
