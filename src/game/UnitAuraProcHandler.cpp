@@ -447,7 +447,8 @@ SpellAuraProcResult Unit::HandleDummyAuraProc(Unit *pVictim, uint32 damage, Aura
                     if (!target)
                         return SPELL_AURA_PROC_FAILED;
 
-                    triggered_spell_id = 26654;
+					basepoints[0] = damage * 100 / CalcArmorReducedDamage(pVictim, 100);
+					triggered_spell_id = 12723;
                     break;
                 }
                 // Retaliation
