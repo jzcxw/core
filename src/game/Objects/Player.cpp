@@ -6371,8 +6371,12 @@ void Player::DuelComplete(DuelCompleteType type)
     //cleanups
     SetGuidValue(PLAYER_DUEL_ARBITER, ObjectGuid());
     SetUInt32Value(PLAYER_DUEL_TEAM, 0);
+	if(Pet* pet = GetPet())
+		pet->SetUInt32Value(PLAYER_DUEL_TEAM, 0);
     duel->opponent->SetGuidValue(PLAYER_DUEL_ARBITER, ObjectGuid());
     duel->opponent->SetUInt32Value(PLAYER_DUEL_TEAM, 0);
+	if (Pet* pet2 = duel->opponent->GetPet())
+		pet2->SetUInt32Value(PLAYER_DUEL_TEAM, 0);
 
     if (duel->opponent->duel)
         duel->opponent->duel->finished = true;;
@@ -15998,7 +16002,11 @@ void Player::UpdateDuelFlag(time_t currTime)
         return;
 
     SetUInt32Value(PLAYER_DUEL_TEAM, 1);
+	if (Pet* pet = GetPet())
+		pet->SetUInt32Value(PLAYER_DUEL_TEAM, 1);
     duel->opponent->SetUInt32Value(PLAYER_DUEL_TEAM, 2);
+	if (Pet* pet2 = duel->opponent->GetPet())
+		pet2->SetUInt32Value(PLAYER_DUEL_TEAM, 2);
 
     duel->startTimer = 0;
     duel->startTime  = currTime;
