@@ -114,7 +114,7 @@ void TargetedMovementGeneratorMedium<T, D>::_setTargetLocation(T &owner)
 
     // Try to prevent redundant micro-moves
     float pathLength = path.Length();
-    if (pathLength < 0.4f ||
+    if (pathLength < 0.2f || // deathst 0.4f
             (pathLength < 4.0f && (i_target->GetPositionZ() - owner.GetPositionZ()) > 10.0f) || // He is flying too high for me. Moving a few meters wont change anything.
             ((path.getPathType() & (PATHFIND_NOPATH | PATHFIND_INCOMPLETE)) && !petFollowing))
     {
@@ -161,7 +161,7 @@ void TargetedMovementGeneratorMedium<T, D>::_setTargetLocation(T &owner)
     else
         init.SetWalk(((D*)this)->EnableWalking());
     init.Launch();
-    i_recheckDistance.Reset(500);
+    i_recheckDistance.Reset(250); // DEATHST 500
     // Fly-hack
     if (Player* player = i_target->ToPlayer())
     {
