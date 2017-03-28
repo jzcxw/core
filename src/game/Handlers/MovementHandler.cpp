@@ -1,6 +1,8 @@
 /*
  * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
  * Copyright (C) 2009-2011 MaNGOSZero <https://github.com/mangos/zero>
+ * Copyright (C) 2011-2016 Nostalrius <https://nostalrius.org>
+ * Copyright (C) 2016-2017 Elysium Project <https://github.com/elysium-project>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -202,6 +204,16 @@ void WorldSession::HandleMoveWorldportAckOpcode()
 
     //lets process all delayed operations on successful teleport
     GetPlayer()->ProcessDelayedOperations();
+
+    // Let the client know its new position by sending a heartbeat!
+    // The Windows client figures this out by itself, but the MacOS one does
+    // not.
+    //
+    // On a successful port, the camera of the MacOS client is facing south and
+    // ignores any movement from the transport object. Triggering
+    // `SMSG_STANDSTATE_UPDATE' with its current state resets the camera
+    // (implemented in `WorldSession::HandleMeetingStoneInfoOpcode').
+    GetPlayer()->SendHeartBeat(false);
 }
 
 void WorldSession::HandleMoveTeleportAckOpcode(WorldPacket& recv_data)

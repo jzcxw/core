@@ -1,6 +1,8 @@
 /*
  * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
  * Copyright (C) 2009-2011 MaNGOSZero <https://github.com/mangos/zero>
+ * Copyright (C) 2011-2016 Nostalrius <https://nostalrius.org>
+ * Copyright (C) 2016-2017 Elysium Project <https://github.com/elysium-project>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -793,6 +795,15 @@ void WorldSession::HandleMeetingStoneInfoOpcode(WorldPacket & /*recv_data*/)
     WorldPacket data(SMSG_MEETINGSTONE_SETQUEUE, 5);
     data << uint32(0) << uint8(6);
     SendPacket(&data);
+
+    // Trigger a client camera reset by sending an `SMSG_STANDSTATE_UPDATE'
+    // event. See `WorldSession::HandleMoveWorldportAckOpcode'.
+    if (GetPlayer()->m_movementInfo.HasMovementFlag(MOVEFLAG_ONTRANSPORT))
+    {
+        WorldPacket data(SMSG_STANDSTATE_UPDATE, 1);
+        data << GetPlayer()->getStandState();
+        GetPlayer()->GetSession()->SendPacket(&data);
+    }
 }
 
 void WorldSession::HandleTutorialFlagOpcode(WorldPacket & recv_data)

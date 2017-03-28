@@ -1,6 +1,8 @@
 /*
  * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
  * Copyright (C) 2009-2011 MaNGOSZero <https://github.com/mangos/zero>
+ * Copyright (C) 2011-2016 Nostalrius <https://nostalrius.org>
+ * Copyright (C) 2016-2017 Elysium Project <https://github.com/elysium-project>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -735,7 +737,7 @@ class TradeData
     public:                                                 // constructors
         TradeData(Player* player, Player* trader) :
             m_player(player),  m_trader(trader), m_accepted(false), m_acceptProccess(false),
-            m_money(0), m_spell(0), m_lastModificationTime(0){}
+            m_money(0), m_spell(0), m_lastModificationTime(0), m_scamPreventionDelay(0){}
 
     public:                                                 // access functions
 
@@ -760,6 +762,9 @@ class TradeData
 
         time_t GetLastModificationTime() const { return m_lastModificationTime; }
         void SetLastModificationTime(time_t t) { m_lastModificationTime = t; }
+		
+		time_t GetScamPreventionDelay() const { return m_scamPreventionDelay; }
+		void SetScamPreventionDelay(time_t t) { m_scamPreventionDelay = t; }
     public:                                                 // access functions
 
         void SetItem(TradeSlots slot, Item* item);
@@ -791,6 +796,7 @@ class TradeData
         ObjectGuid m_items[TRADE_SLOT_COUNT];               // traded itmes from m_player side including non-traded slot
 
         time_t     m_lastModificationTime;                  // to prevent scam (change gold before the other validates)
+		time_t	   m_scamPreventionDelay;					// to prevent scam, set a delay in milliseconds (CANNOT be less than or equal to 10ms) before accepting trade.
 };
 
 struct CinematicWaypointEntry
@@ -2109,7 +2115,7 @@ class MANGOS_DLL_SPEC Player final: public Unit
             m_DelayedOperations &= ~operation;
         }
 
-        inline bool HasScheduledEvent() const { return m_Events.m_events.size(); }
+        inline bool HasScheduledEvent() const { return m_Events.HasScheduledEvent(); }
         void SetAutoInstanceSwitch(bool v) { m_enableInstanceSwitch = v; }
     protected:
         bool   m_enableInstanceSwitch;

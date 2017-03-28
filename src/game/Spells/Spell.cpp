@@ -1,6 +1,8 @@
 /*
  * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
  * Copyright (C) 2009-2011 MaNGOSZero <https://github.com/mangos/zero>
+ * Copyright (C) 2011-2016 Nostalrius <https://nostalrius.org>
+ * Copyright (C) 2016-2017 Elysium Project <https://github.com/elysium-project>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -4689,8 +4691,14 @@ SpellCastResult Spell::CheckCast(bool strict)
             {
                 Player* casterOwner = m_caster->GetCharmerOrOwnerPlayerOrPlayerItself();
                 Player* targetOwner = target->GetCharmerOrOwnerPlayerOrPlayerItself();
-                if (targetOwner && casterOwner != targetOwner && targetOwner->duel && casterOwner && !casterOwner->IsInDuelWith(targetOwner))
-                    return SPELL_FAILED_BAD_TARGETS;
+
+                if (m_spellInfo->Id == 7266 && targetOwner->duel && !casterOwner->IsInDuelWith(targetOwner))
+                {
+                    return SPELL_FAILED_TARGET_DUELING;
+                }
+
+                if (targetOwner && casterOwner != targetOwner && targetOwner->duel && targetOwner->duel->startTime && casterOwner && !casterOwner->IsInDuelWith(targetOwner))
+                    return SPELL_FAILED_TARGET_DUELING;
             }
         }
         else if (m_caster == target)
@@ -6502,6 +6510,7 @@ SpellCastResult Spell::CheckItems()
             if (!p_caster)
                 break;
             uint32 rank = 0;
+            uint32 itemtype;
             Unit::AuraList const& mDummyAuras = p_caster->GetAurasByType(SPELL_AURA_DUMMY);
             for (Unit::AuraList::const_iterator i = mDummyAuras.begin(); i != mDummyAuras.end(); ++i)
             {
@@ -6527,13 +6536,33 @@ SpellCastResult Spell::CheckItems()
                 {22103, 22104, 22105}               // Master Healthstone
             };
 
-            for (int i = 0; i < 6; ++i)
-                for (int j = 0; j < 3; ++j)
-                    if (p_caster->HasItemCount(itypes[i][j], 1))
-                    {
-                        p_caster->SendEquipError(EQUIP_ERR_CANT_CARRY_MORE_OF_THIS, nullptr, nullptr, itypes[i][j]);
-                        return SPELL_FAILED_DONT_REPORT;
-                    }
+            switch (m_spellInfo->Id)
+            {
+                case  6201:
+                    itemtype = itypes[0][rank];
+                    break; // Minor Healthstone
+                case  6202:
+                    itemtype = itypes[1][rank];
+                    break; // Lesser Healthstone
+                case  5699:
+                    itemtype = itypes[2][rank];
+                    break; // Healthstone
+                case 11729:
+                    itemtype = itypes[3][rank];
+                    break; // Greater Healthstone
+                case 11730:
+                    itemtype = itypes[4][rank];
+                    break; // Major Healthstone
+                case 27230:
+                    itemtype = itypes[5][rank];
+                    break; // Master Healthstone
+            }
+
+            if (p_caster->HasItemCount(itemtype, 1))
+            {
+                p_caster->SendEquipError(EQUIP_ERR_CANT_CARRY_MORE_OF_THIS, nullptr, nullptr, itemtype);
+                return SPELL_FAILED_DONT_REPORT;
+            }
         }
     }
     for (int i = 0; i < MAX_EFFECT_INDEX; ++i)

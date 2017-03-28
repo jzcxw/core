@@ -4413,6 +4413,21 @@ void Unit::RemoveAuraHolderFromStack(uint32 spellId, uint32 stackAmount, ObjectG
     }
 }
 
+void Unit::RemoveSingleAuraDueToItemSet(uint32 spellId, AuraRemoveMode mode)
+{
+    SpellAuraHolderBounds bounds = GetSpellAuraHolderBounds(spellId);
+    for (SpellAuraHolderMap::iterator iter = bounds.first; iter != bounds.second;)
+    {
+        if (!iter->second->GetCastItemGuid())
+        {
+            RemoveSpellAuraHolder(iter->second, mode);
+            return;
+        }
+        else
+            ++iter;
+    }
+}
+
 void Unit::RemoveAurasDueToSpell(uint32 spellId, SpellAuraHolder* except, AuraRemoveMode mode)
 {
     SpellAuraHolderBounds bounds = GetSpellAuraHolderBounds(spellId);
@@ -8028,7 +8043,7 @@ bool Unit::SelectHostileTarget()
     if (target)
     {
         // Nostalrius : Correction bug sheep/fear
-        if (!hasUnitState(UNIT_STAT_STUNNED | UNIT_STAT_PENDING_STUNNED | UNIT_STAT_DIED | UNIT_STAT_CONFUSED | UNIT_STAT_FLEEING) && !HasAuraType(SPELL_AURA_MOD_FEAR) && !HasAuraType(SPELL_AURA_MOD_CONFUSE))
+        if (!hasUnitState(UNIT_STAT_STUNNED | UNIT_STAT_PENDING_STUNNED | UNIT_STAT_DIED | UNIT_STAT_CONFUSED | UNIT_STAT_FLEEING) && (!HasAuraType(SPELL_AURA_MOD_FEAR) || HasAuraType(SPELL_AURA_PREVENTS_FLEEING)) && !HasAuraType(SPELL_AURA_MOD_CONFUSE))
         {
             SetInFront(target);
             ((Creature*)this)->AI()->AttackStart(target);
@@ -9351,7 +9366,7 @@ void Unit::ModConfuseSpell(bool apply, ObjectGuid casterGuid, uint32 spellID, Mo
     else
         RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_CONFUSED);
 
-    if (HasAuraType(SPELL_AURA_MOD_FEAR))
+    if (HasAuraType(SPELL_AURA_MOD_FEAR) && !HasAuraType(SPELL_AURA_PREVENTS_FLEEING))
     {
         controlFinished = false;
         SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_FLEEING);
@@ -10240,9 +10255,9 @@ void Unit::InterruptSpellsCastedOnMe(bool killDelayed, bool interruptPositiveSpe
         if (!killDelayed)
             continue;
         // 2/ Interruption des sorts qui ne sont plus reference, mais dont il reste un event (ceux en parcours par exemple)
-        EventList::iterator it = (*iter)->m_Events.m_events.begin();
-        for (; it != (*iter)->m_Events.m_events.end(); ++it)
-            if (SpellEvent* event = dynamic_cast<SpellEvent*>(it->second))
+        auto i_Events = (*iter)->m_Events.GetEvents().begin();
+        for (; i_Events != (*iter)->m_Events.GetEvents().end(); ++i_Events)
+            if (SpellEvent* event = dynamic_cast<SpellEvent*>(i_Events->second))
                 if (event && event->GetSpell()->m_targets.getUnitTargetGuid() == GetObjectGuid())
                     if (event->GetSpell()->getState() != SPELL_STATE_FINISHED)
                         event->GetSpell()->cancel();

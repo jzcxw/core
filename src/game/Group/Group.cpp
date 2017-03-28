@@ -1,6 +1,8 @@
 /*
  * Copyright (C) 2005-2011 MaNGOS <http://getmangos.com/>
  * Copyright (C) 2009-2011 MaNGOSZero <https://github.com/mangos/zero>
+ * Copyright (C) 2011-2016 Nostalrius <https://nostalrius.org>
+ * Copyright (C) 2016-2017 Elysium Project <https://github.com/elysium-project>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1070,9 +1072,24 @@ void Group::UpdateOfflineLeader(time_t time, uint32 delay)
     // Do not update BG groups, BGs take care of offliners
     if (isBGGroup())
         return;
-    // Check for delay and leader presence
-    if ((time - m_leaderLastOnline) < delay || sObjectMgr.GetPlayer(m_leaderGuid))
+
+    // TODO: Maybe cache the world session for the leader, and only fetch if we hit a cache miss?
+    // Get the leader and leader session
+    uint32 leaderAcc = sObjectMgr.GetPlayerAccountIdByGUID(m_leaderGuid);
+    WorldSession* session = sWorld.FindSession(leaderAcc);
+    Player* leader = sObjectMgr.GetPlayer(m_leaderGuid);
+
+    // Check for delay, leader presence or if the leader is loading
+
+    if (leader)
+    {
+        m_leaderLastOnline = time;
         return;
+    }
+
+    if ((time - m_leaderLastOnline) < delay || (session && session->PlayerLoading()))
+        return;
+
     _chooseLeader(true);
 }
 
