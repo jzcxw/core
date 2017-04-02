@@ -565,7 +565,8 @@ void WorldSession::ProcessPackets(PacketFilter& updater)
         catch (ForwardToNode_Exception& )
         {
             ASSERT(GetNodeSession());
-            GetMasterSession()->ForwardClientPacket(GetAccountId(), packet);
+			GetNodeSession()->ForwardClientPacket(GetAccountId(), packet);
+            //GetMasterSession()->ForwardClientPacket(GetAccountId(), packet);
         }
         catch (ByteBufferException &)
         {
