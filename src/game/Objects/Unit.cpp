@@ -808,7 +808,7 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
 
         if (damagetype != DOT)
         {
-            if (!getVictim())
+            if (!getVictim() || !getVictim()->getAttackerForHelper())
             {
                 // if not have main target then attack state with target (including AI call)
                 //start melee attacks only after melee hit
@@ -963,6 +963,12 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
             // Set correct group_tap if player entered a group
             if (player_tap && !group_tap)
                 group_tap = player_tap->GetGroup();
+        }
+        else if (creature->lootForCreator && creature->GetCreatorGuid()) 
+        {
+            Unit* creator = GetUnit(*this, creature->GetCreatorGuid());
+            if (creator->IsPlayer())
+                player_tap = (Player*)creator;
         }
         else
             creature->SetLootRecipient(nullptr);
@@ -1188,8 +1194,7 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
     {
         Player *killed = ((Player*)pVictim);
         if (BattleGround *bg = killed->GetBattleGround())
-            if (player_tap)
-                bg->HandleKillPlayer(killed, player_tap);
+            bg->HandleKillPlayer(killed, player_tap);
     }
     else if (pVictim->GetTypeId() == TYPEID_UNIT)
     {
@@ -2989,7 +2994,7 @@ SpellMissInfo Unit::SpellHitResult(Unit *pVictim, SpellEntry const *spell, bool 
 
     // All positive spells can`t miss
     // TODO: client not show miss log for this spells - so need find info for this in dbc and use it!
-    if (IsPositiveSpell(spell->Id))
+    if (IsPositiveSpell(spell->Id, this, pVictim))
         return SPELL_MISS_NONE;
 
     // Check for immune (use charges)
@@ -4581,9 +4586,12 @@ void Unit::RemoveSpellAuraHolder(SpellAuraHolder *holder, AuraRemoveMode mode)
     else
         delete holder;
 
-    if (mode != AURA_REMOVE_BY_EXPIRE && IsChanneledSpell(AurSpellInfo) && !IsAreaOfEffectSpell(AurSpellInfo) && caster)
-        if (caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL) && caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL)->m_spellInfo->Id == auraSpellId)
+    if (mode != AURA_REMOVE_BY_EXPIRE && IsChanneledSpell(AurSpellInfo) && caster)
+    {
+        Spell *channeled = caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+        if (channeled && channeled->m_spellInfo->Id == auraSpellId && channeled->m_targets.getUnitTarget() == this)
             caster->InterruptSpell(CURRENT_CHANNELED_SPELL);
+    }
 }
 
 void Unit::RemoveSingleAuraFromSpellAuraHolder(SpellAuraHolder *holder, SpellEffectIndex index, AuraRemoveMode mode)
@@ -5483,7 +5491,7 @@ bool Unit::IsNeutralToAll() const
     return my_faction->IsNeutralToAll();
 }
 
-bool Unit::Attack(Unit *victim, bool meleeAttack)
+bool Unit::Attack(Unit *victim, bool meleeAttack, bool triggerAIReaction)
 {
     if (!victim || victim == this)
         return false;
@@ -5542,7 +5550,9 @@ bool Unit::Attack(Unit *victim, bool meleeAttack)
         addUnitState(UNIT_STAT_MELEE_ATTACKING);
 
     m_attacking = victim;
-    m_attacking->_addAttacker(this);
+
+    if (triggerAIReaction)
+        m_attacking->_addAttacker(this);        
 
     if (GetTypeId() == TYPEID_UNIT) // && !((Creature*)this)->GetLinkGroup())
     {
@@ -7497,6 +7507,10 @@ bool Unit::canDetectInvisibilityOf(Unit const* u) const
     if (!u->m_invisibilityMask && m_detectInvisibilityMask)
         return true;
 
+    if (const Creature* worldBoss = u->ToCreature())
+        if (worldBoss->IsWorldBoss())
+            return true;
+
     if (uint32 mask = (m_detectInvisibilityMask & u->m_invisibilityMask))
     {
         for (int32 i = 0; i < 32; ++i)
@@ -7825,7 +7839,6 @@ void Unit::SetDeathState(DeathState s)
     if (s == JUST_DIED)
     {
         RemoveAllAurasOnDeath();
-        RemoveGuardians();
         UnsummonAllTotems();
 
         i_motionMaster.Clear(false, true);
@@ -7836,12 +7849,8 @@ void Unit::SetDeathState(DeathState s)
         // remove aurastates allowing special moves
         ClearAllReactives();
         ClearDiminishings();
-        // Desinvocation du pet a la mort
-        if (IsCreature())
-            if (Pet* pet = GetPet())
-                pet->Unsummon(PET_SAVE_REAGENTS, this);
     }
-    else if (s == JUST_ALIVED)
+    else if (s == JUST_ALIVED || s == ALIVE)
     {
         RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);  // clear skinnable for creature and player (at battleground)
     }
