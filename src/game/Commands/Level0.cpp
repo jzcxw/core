@@ -32,6 +32,9 @@
 #include "SystemConfig.h"
 #include "revision.h"
 #include "Util.h"
+#include "MapManager.h"
+#include "Map.h"
+#include "MovementBroadcaster.h"
 
 bool registerPlayerToBg(WorldSession * sess, BattleGroundTypeId bgid)
 {
@@ -121,7 +124,40 @@ bool ChatHandler::HandleServerInfoCommand(char* /*args*/)
     std::string str = secsToTimeString(sWorld.GetUptime());
 
     SendSysMessage("Core revision: " _FULLVERSION);
-    PSendSysMessage(LANG_UPTIME, str.c_str());
+	PSendSysMessage(LANG_UPTIME, str.c_str());
+	
+	uint32 now = WorldTimer::getMSTime();
+	MapManager::MapMapType& Maps = const_cast <MapManager::MapMapType&> (sMapMgr.Maps());
+	for (MapManager::MapMapType::iterator iter = Maps.begin(); iter != Maps.end(); ++iter)
+	{
+		// If this map has been empty for too long, we no longer update it.
+		if (!iter->second->HavePlayers() && sWorld.getConfig(CONFIG_UINT32_EMPTY_MAPS_UPDATE_TIME))
+		{
+			if (WorldTimer::getMSTimeDiff(iter->second->GetLastPlayerLeftTime(), now) > sWorld.getConfig(CONFIG_UINT32_EMPTY_MAPS_UPDATE_TIME))
+				continue;
+		}
+
+		MovementBroadcaster* bcaster = sWorld.GetBroadcaster();
+		bool packetBroadcastSlow = bcaster->IsMapSlow(iter->second->GetInstanceId());
+		uint32 id = iter->second->GetId();
+		uint32 instanceid = iter->second->GetInstanceId();
+
+		PSendSysMessage("Map %3u inst %2u: %3ums [ sess %3ums| players %3ums | cells %3ums | sendObjUpdates %3ums| relocations %3ums | players2 %3ums | wait%2u %3ums ] %s", iter->second->GetId(), iter->second->GetInstanceId(), iter->second->updateMapTime,
+			iter->second->sessionsUpdateTime, iter->second->playersUpdateTime, iter->second->activeCellsUpdateTime, iter->second->objectsUpdateTime,
+			iter->second->visibilityUpdateTime, iter->second->playersUpdateTime2, iter->second->additionnalUpdateCounts, iter->second->additionnalWaitTime,
+			packetBroadcastSlow ? "SLOWBCAST" : "");
+
+		//std::string ch = "MapID " + std::to_string(id) + " inst " + std::to_string(instanceid) + ": " + std::to_string(iter->second->updateMapTime) + "ms" + " [sess " + std::to_string(iter->second->sessionsUpdateTime) + "ms | players " + std::to_string(iter->second->playersUpdateTime) + "ms | cells " + std::to_string(iter->second->activeCellsUpdateTime) + "ms | sendObjUpdates " + std::to_string(iter->second->objectsUpdateTime) + "ms | relocations " + std::to_string(iter->second->visibilityUpdateTime) + " ms | players2 " + std::to_string(iter->second->playersUpdateTime2) + "ms] ";
+		//ch += packetBroadcastSlow ? "SLOWBCAST" : "";
+		//SendSysMessage(ch.c_str());
+	}
+	HandlePBCastStatsCommand("1");
+	/*SendSysMessage("Update single map %3u inst %2u: %3ums [sess %3ums|players %3ums|cells %3ums|sendObjUpdates %3ums|relocations %3ums|players2 %3ums|wait%2u %3ums] %s",
+		GetId(), GetInstanceId(), updateMapTime,
+		sessionsUpdateTime, playersUpdateTime, activeCellsUpdateTime, objectsUpdateTime,
+		visibilityUpdateTime, playersUpdateTime2, additionnalUpdateCounts, additionnalWaitTime,
+		packetBroadcastSlow ? "SLOWBCAST" : "");*/
+    
 
     return true;
 }

@@ -486,6 +486,16 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
 
         void SetMapUpdateIndex(int idx) { _updateIdx = idx; }
 
+		uint32 updateMapTime = 0;
+		uint32 sessionsUpdateTime = 0;
+		uint32 playersUpdateTime = 0;
+		uint32 activeCellsUpdateTime = 0;
+		uint32 objectsUpdateTime = 0;
+		uint32 visibilityUpdateTime = 0;
+		uint32 playersUpdateTime2 = 0;
+		uint32 additionnalWaitTime = 0;
+		uint32 additionnalUpdateCounts = 0;
+
     private:
         void LoadMapAndVMap(int gx, int gy);
 
@@ -536,6 +546,8 @@ class MANGOS_DLL_SPEC Map : public GridRefManager<NGridType>, public MaNGOS::Obj
 
         mutable MapMutexType    unitsMvtUpdate_lock;
         std::set<Unit*>         unitsMvtUpdate;
+
+		
 
     protected:
         MapEntry const* i_mapEntry;

@@ -857,8 +857,16 @@ void Map::DoUpdate(uint32 maxDiff)
 
 void Map::Update(uint32 t_diff)
 {
-    uint32 updateMapTime = WorldTimer::getMSTime();
-    uint32 timeDiff = 0;
+    updateMapTime = WorldTimer::getMSTime();
+	sessionsUpdateTime = 0;
+	playersUpdateTime = 0;
+	activeCellsUpdateTime = 0;
+	objectsUpdateTime = 0;
+	visibilityUpdateTime = 0;
+	playersUpdateTime2 = 0;
+	additionnalWaitTime = 0;
+	additionnalUpdateCounts = 0;
+    //timeDiff = 0;
     _dynamicTree.update(t_diff);
 
     ProcessSessionPackets(PACKET_PROCESS_DB_QUERY); // TODO: Move somewhere else ?
@@ -875,31 +883,31 @@ void Map::Update(uint32 t_diff)
             pSession->Update(updater);
         }
     }
-    uint32 sessionsUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime);
+    sessionsUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime);
 
     /// update players at tick
     UpdateSessionsMovementAndSpellsIfNeeded();
     UpdatePlayers();
-    uint32 playersUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - sessionsUpdateTime;
+    playersUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - sessionsUpdateTime;
 
     UpdateCells(t_diff);
-    uint32 activeCellsUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - playersUpdateTime - sessionsUpdateTime;
+    activeCellsUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - playersUpdateTime - sessionsUpdateTime;
 
     // Send world objects and item update field changes
     SendObjectUpdates();
-    uint32 objectsUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime;
+    objectsUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime;
 
     UpdateVisibilityForRelocations();
-    uint32 visibilityUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - objectsUpdateTime - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime;
+    visibilityUpdateTime = WorldTimer::getMSTimeDiffToNow(updateMapTime) - objectsUpdateTime - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime;
 
     UpdateSessionsMovementAndSpellsIfNeeded();
     UpdatePlayers();
-    uint32 playersUpdateTime2 = WorldTimer::getMSTimeDiffToNow(updateMapTime) - objectsUpdateTime - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime - visibilityUpdateTime;
+    playersUpdateTime2 = WorldTimer::getMSTimeDiffToNow(updateMapTime) - objectsUpdateTime - activeCellsUpdateTime - playersUpdateTime - sessionsUpdateTime - visibilityUpdateTime;
 
     updateMapTime = WorldTimer::getMSTimeDiffToNow(updateMapTime);
 
-    uint32 additionnalWaitTime = 0;
-    uint32 additionnalUpdateCounts = 0;
+    additionnalWaitTime = 0;
+    additionnalUpdateCounts = 0;
     if (_updateIdx >= 0)
     {
         additionnalWaitTime = WorldTimer::getMSTime();
