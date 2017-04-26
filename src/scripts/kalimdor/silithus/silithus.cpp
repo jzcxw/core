@@ -1037,6 +1037,8 @@ enum
 {
     GO_RESONATING_CRYSTAL_FORMATION     = 180810,
 
+    MAX_SIGHT_DISTANCE                  = 55,
+
     // C'Thun's Mind Control has varying strengths based on location
     WHISPERINGS_OF_CTHUN_0              = 26259, // (10-21) Barrens
     WHISPERINGS_OF_CTHUN_1              = 26258, // (21-41) 1K Needles
@@ -1106,7 +1108,7 @@ struct npc_resonating_CrystalAI : public ScriptedAI
         if (!who->isAlive())
             return;
 
-        playerDetected = m_creature->IsWithinDistInMap(who, 45.0f) ? true : false;
+        playerDetected = m_creature->IsWithinDistInMap(who, MAX_SIGHT_DISTANCE) ? true : false;
     }
 
     bool MoreThanOnePlayerNear()
@@ -1116,8 +1118,9 @@ struct npc_resonating_CrystalAI : public ScriptedAI
         for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
         {
             Player* pPlayer = itr->getSource();
-            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, 40.0f) && m_creature->IsWithinLOSInMap(pPlayer) && !pPlayer->isGameMaster())
+            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, MAX_SIGHT_DISTANCE) && !pPlayer->isGameMaster())
                 ++var;
+
             if (var > 1)
                 return true;
         }
@@ -1130,7 +1133,7 @@ struct npc_resonating_CrystalAI : public ScriptedAI
         for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
         {
             Player* pPlayer = itr->getSource();
-            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, 40.0f) && m_creature->IsWithinLOSInMap(pPlayer) && !pPlayer->isGameMaster())
+            if (pPlayer && pPlayer->isAlive() && m_creature->IsWithinDistInMap(pPlayer, MAX_SIGHT_DISTANCE) && !pPlayer->isGameMaster())
             {
                 m_creature->AddThreat(pPlayer);
                 m_creature->SetInCombatWith(pPlayer);
@@ -2492,7 +2495,7 @@ struct npc_anachronos_the_ancientAI : public ScriptedAI
     void Reset()
     {
         // We summon the rest of the dragons on timer
-        m_uiEventTimer = 100;
+        m_uiEventTimer = 0;
         m_uiEventStage = 0;
 
         m_uiFandralGUID.Clear();
@@ -2510,6 +2513,11 @@ struct npc_anachronos_the_ancientAI : public ScriptedAI
 
         m_creature->SetRespawnDelay(DAY);
         m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+    }
+
+    void BeginScene()
+    {
+        m_uiEventTimer = 100;
     }
 
     void AbortScene()
@@ -2539,6 +2547,11 @@ struct npc_anachronos_the_ancientAI : public ScriptedAI
         // start the scene until the time is up
         m_creature->SetVisibility(VISIBILITY_OFF);
         m_creature->ForcedDespawn(SCENE_BLOCK_TIME);
+    }
+
+    void JustDied(Unit* killer)
+    {
+        AbortScene();
     }
 
     void SetupAQGate(uint32 phase)
@@ -3274,7 +3287,10 @@ bool QuestAcceptGO_crystalline_tear(Player* pPlayer, GameObject* pGo, const Ques
         {
             // Send the player's guid in order to handle quest completion
             if (npc_anachronos_the_ancientAI* pAnachronosAI = dynamic_cast<npc_anachronos_the_ancientAI*>(pAnachronos->AI()))
+            {
                 pAnachronosAI->m_uiPlayerGUID = pPlayer->GetObjectGuid();
+                pAnachronosAI->BeginScene();
+            }
 
             return true;
         }
