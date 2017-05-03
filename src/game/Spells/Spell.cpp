@@ -592,13 +592,14 @@ void Spell::FillTargetMap()
                 break;
         }
 
-        if (m_caster->GetTypeId() == TYPEID_PLAYER)
+        if (m_caster->GetTypeId() == TYPEID_PLAYER && !(m_spellInfo->AttributesEx & SPELL_ATTR_EX_NO_THREAT))
         {
             Player *me = (Player*)m_caster;
             for (UnitList::const_iterator itr = tmpUnitMap.begin(); itr != tmpUnitMap.end(); ++itr)
             {
                 Player *targetOwner = (*itr)->GetCharmerOrOwnerPlayerOrPlayerItself();
-                if (targetOwner && targetOwner != me && targetOwner->IsPvP() && !me->IsInDuelWith(targetOwner))
+                if ((targetOwner && targetOwner != me && targetOwner->IsPvP() && !me->IsInDuelWith(targetOwner)) || // PvP flagged players
+                    ((*itr)->IsCreature() && (*itr)->IsPvP()))                                                      // PvP flagged creatures
                 {
                     me->UpdatePvP(true);
                     me->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ENTER_PVP_COMBAT);
@@ -1477,6 +1478,14 @@ void Spell::DoSpellHitOnUnit(Unit *unit, uint32 effectMask)
                 {
                     delete m_spellAuraHolder;
                     m_spellAuraHolder = nullptr;
+
+                    // Need to interrupt pet channeling spells or else they get stuck
+                    if (m_caster && m_caster->IsControlledByPlayer() && IsChanneledSpell(m_spellInfo))   
+                    {
+                        Spell *channeled = m_caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+                        if (channeled && channeled->m_spellInfo->Id == m_spellInfo->Id && channeled->m_targets.getUnitTarget() == unit)
+                            m_caster->InterruptSpell(CURRENT_CHANNELED_SPELL);
+                    }
                     return;
                 }
             }
@@ -2672,9 +2681,8 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                         targetUnitMap.push_back(m_caster);
                     break;
                 case SPELL_EFFECT_SUMMON_PLAYER:
-                    if (m_caster->GetTypeId() == TYPEID_PLAYER && ((Player*)m_caster)->GetSelectionGuid())
-                        if (Player* target = sObjectMgr.GetPlayer(((Player*)m_caster)->GetSelectionGuid()))
-                            targetUnitMap.push_back(target);
+                    if (m_targets.getUnitTarget())
+                        targetUnitMap.push_back(m_targets.getUnitTarget());
                     break;
                 case SPELL_EFFECT_RESURRECT_NEW:
                     if (m_targets.getUnitTarget())
@@ -2999,7 +3007,7 @@ void Spell::cancel()
         return;
 
     // channeled spells don't display interrupted message even if they are interrupted, possible other cases with no "Interrupted" message
-    bool sendInterrupt = IsChanneledSpell(m_spellInfo) ? false : true;
+    bool sendInterrupt = IsChanneledSpell(m_spellInfo) && m_spellState != SPELL_STATE_PREPARING ? false : true;
 
     m_autoRepeat = false;
     switch (m_spellState)
@@ -4704,8 +4712,8 @@ SpellCastResult Spell::CheckCast(bool strict)
 
         if (non_caster_target)
         {
-            // Not allow casting on flying player
-            if (target->IsTaxiFlying())
+            // Not allow casting on flying player unless its a ritual of summoning
+            if (target->IsTaxiFlying() && m_spellInfo->Id != 7720)
                 return SPELL_FAILED_BAD_TARGETS;
 
             if (!m_IsTriggeredSpell)
@@ -5581,10 +5589,12 @@ SpellCastResult Spell::CheckCast(bool strict)
             {
                 if (m_caster->GetTypeId() != TYPEID_PLAYER)
                     return SPELL_FAILED_BAD_TARGETS;
-                if (!((Player*)m_caster)->GetSelectionGuid())
+                if (!m_targets.getUnitTarget())
+                    return SPELL_FAILED_BAD_TARGETS;
+                if (!m_targets.getUnitTarget()->IsPlayer())
                     return SPELL_FAILED_BAD_TARGETS;
 
-                Player* target = sObjectMgr.GetPlayer(((Player*)m_caster)->GetSelectionGuid());
+                Player* target = (Player*)m_targets.getUnitTarget();
                 if (!target || ((Player*)m_caster) == target || !target->IsInSameRaidWith((Player*)m_caster))
                     return SPELL_FAILED_BAD_TARGETS;
 
@@ -7335,6 +7345,11 @@ public:
                         {
                             if (!casterUnit->IsValidAttackTarget(sourceUnit))
                                 continue;
+
+                            // Negative AoE from non flagged players cannot target other players
+                            if (Player *attackedPlayer = sourceUnit->GetCharmerOrOwnerPlayerOrPlayerItself())
+                                if (casterUnit->IsPlayer() && !casterUnit->IsPvP() && !((Player*)casterUnit)->IsInDuelWith(attackedPlayer))
+                                    continue;
                         }
                         else if (GameObject* gobj = i_originalCaster->ToGameObject())
                         {
