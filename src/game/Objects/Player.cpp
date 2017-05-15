@@ -1308,11 +1308,10 @@ void Player::Update(uint32 update_diff, uint32 p_time)
     }
 
     // not auto-free ghost from body in instances
-    if (m_deathTimer > 0  && !GetMap()->Instanceable())
+    if (getDeathState() == CORPSE  && !GetMap()->Instanceable())
     {
         if (p_time >= m_deathTimer)
         {
-            m_deathTimer = 0;
             BuildPlayerRepop();
             RepopAtGraveyard();
         }
@@ -4130,7 +4129,7 @@ void Player::DeleteFromDB(ObjectGuid playerguid, uint32 accountId, bool updateRe
                     if (has_items)
                     {
                         // data needs to be at first place for Item::LoadFromDB
-                        QueryResult *resultItems = CharacterDatabase.PQuery("SELECT creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, text, item_guid, itemEntry FROM mail_items JOIN item_instance ON item_guid = guid WHERE mail_id='%u'", mail_id);
+                        QueryResult *resultItems = CharacterDatabase.PQuery("SELECT creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, text, item_guid, itemEntry, generated_loot FROM mail_items JOIN item_instance ON item_guid = guid WHERE mail_id='%u'", mail_id);
                         if (resultItems)
                         {
                             do
@@ -4272,6 +4271,13 @@ void Player::DeleteOldCharacters(uint32 keepDays)
 */
 void Player::BuildPlayerRepop()
 {
+    // Waiting to Resurrect (probably redundant cast, yet to check thoroughly)
+    if (InBattleGround())
+        CastSpell(this, 2584, true);
+
+    //this is spirit release confirm?
+    RemovePet(PET_SAVE_REAGENTS);
+
     if (getRace() == RACE_NIGHTELF)
         CastSpell(this, 20584, true);                       // auras SPELL_AURA_INCREASE_SPEED(+speed in wisp form), SPELL_AURA_INCREASE_SWIM_SPEED(+swim speed in wisp form), SPELL_AURA_TRANSFORM (to wisp form)
     CastSpell(this, 8326, true);                            // auras SPELL_AURA_GHOST, SPELL_AURA_INCREASE_SPEED(why?), SPELL_AURA_INCREASE_SWIM_SPEED(why?)
@@ -4679,6 +4685,7 @@ void Player::RepopAtGraveyard()
 
     // stop countdown until repop
     m_deathTimer = 0;
+    SetDeathState(DEAD);
     UpdateObjectVisibility();
     // if no grave found, stay at the current location
     // and don't show spirit healer location
@@ -7122,9 +7129,8 @@ void Player::RemovedInsignia(Player* looterPlr)
         return;
 
     // If not released spirit, do it !
-    if (m_deathTimer > 0)
+    if (getDeathState() != DEAD)
     {
-        m_deathTimer = 0;
         BuildPlayerRepop();
         RepopAtGraveyard();
     }
@@ -7265,6 +7271,15 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
 
             if (!item->HasGeneratedLoot())
             {
+                if (item->HasGeneratedLootSecondary()) // temporary check, merge conditions later
+                {
+                    sLog.outError("%s attempted to regenerate %s at map %u, zone %u, area %u - grouped? %s",
+                        GetGuidStr().c_str(), item->GetGuidStr().c_str(), GetMap()->GetId(), GetZoneId(), GetAreaId(), GetGroup()? "yes" : "no");
+                    GetSession()->ProcessAnticheatAction("ItemsCheck", "Player::SendLoot: attempted to regenerate container loot", CHEAT_ACTION_LOG);
+                    SendLootRelease(guid);
+                    return;
+                }
+
                 item->loot.clear();
 
                 switch (loot_type)
@@ -7277,6 +7292,7 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type, Player* pVictim)
                         loot->FillLoot(item->GetEntry(), LootTemplates_Item, this, true, item->GetProto()->MaxMoneyLoot == 0);
                         loot->generateMoneyLoot(item->GetProto()->MinMoneyLoot, item->GetProto()->MaxMoneyLoot);
                         item->SetLootState(ITEM_LOOT_CHANGED);
+                        item->SetGeneratedLoot(true);
                         break;
                 }
             }
@@ -8100,7 +8116,7 @@ uint32 Player::GetItemCount(uint32 item, bool inBankAlso, Item* skipItem) const
 
     if (inBankAlso)
     {
-        for (int i = BANK_SLOT_ITEM_START; i < BANK_SLOT_ITEM_END; ++i)
+        for (int i = BANK_SLOT_ITEM_START; i < BANK_SLOT_BAG_END; ++i)
         {
             Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
             if (pItem && pItem != skipItem && pItem->GetEntry() == item)
@@ -8378,7 +8394,7 @@ bool Player::HasItemCount(uint32 item, uint32 count, bool inBankAlso) const
 
     if (inBankAlso)
     {
-        for (int i = BANK_SLOT_ITEM_START; i < BANK_SLOT_ITEM_END; ++i)
+        for (int i = BANK_SLOT_ITEM_START; i < BANK_SLOT_BAG_END; ++i)
         {
             Item *pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
             if (pItem && pItem->GetEntry() == item && !pItem->IsInTrade())
@@ -14007,9 +14023,16 @@ bool Player::LoadFromDB(ObjectGuid guid, SqlQueryHolder *holder)
     _LoadBGData(holder->GetResult(PLAYER_LOGIN_QUERY_LOADBGDATA));
 
     MapEntry const* mapEntry = sMapStorage.LookupEntry<MapEntry>(GetMapId());
+
+    // Check for valid map
+    if (!mapEntry)
+    {
+        sLog.outError("Player %s in invalid map. Relocating to home.", guid.GetString().c_str());
+        RelocateToHomebind();
+    }
+    else if (mapEntry->IsBattleGround())
     // if server restart after player save in BG
     // player can have current coordinates in to BG map, fix this
-    if (!mapEntry || mapEntry->IsBattleGround())
     {
         const WorldLocation& _loc = GetBattleGroundEntryPoint();
         SetLocationMapId(_loc.mapid);
@@ -14557,8 +14580,8 @@ void Player::LoadCorpse()
 
 void Player::_LoadInventory(QueryResult *result, uint32 timediff)
 {
-    //               0                1      2         3        4      5             6                 7           8     9    10    11   12    13
-    //SELECT creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, text, bag, slot, item, itemEntry
+    //               0                1      2         3        4      5             6                 7           8     9    10    11   12    13              14
+    //SELECT creatorGuid, giftCreatorGuid, count, duration, charges, flags, enchantments, randomPropertyId, durability, text, bag, slot, item, itemEntry, generated_loot
     std::unordered_map<uint32, Bag*> bagMap;                          // fast guid lookup for bags
     //NOTE: the "order by `bag`" is important because it makes sure
     //the bagMap is filled before items in the bags are loaded
@@ -14593,6 +14616,12 @@ void Player::_LoadInventory(QueryResult *result, uint32 timediff)
             }
 
             Item *item = NewItemOrBag(proto);
+
+            /*
+             * LoadFromDB is called from multiple places but with a different set of fields - this is workaround
+             * so I don't need to fix the mess of queries and probably break something until a later date
+             */
+            item->SetGeneratedLoot(fields[14].GetBool());
 
             if (!item->LoadFromDB(item_lowguid, GetObjectGuid(), fields, item_id))
             {
@@ -17144,11 +17173,11 @@ bool Player::IsVisibleInGridForPlayer(Player* pl) const
         return true;
 
     // Live player see live player or dead player with not realized corpse
-    if (pl->isAlive() || pl->m_deathTimer > 0)
-        return isAlive() || m_deathTimer > 0;
+    if (pl->getDeathState() != DEAD)
+        return getDeathState() != DEAD;
 
     // Ghost see other friendly ghosts, that's for sure
-    if (!(isAlive() || m_deathTimer > 0) && IsFriendlyTo(pl))
+    if (getDeathState() == DEAD && IsFriendlyTo(pl))
         return true;
 
     // Dead player see live players near own corpse
@@ -18662,7 +18691,7 @@ bool Player::CanUseBattleGroundObject()
                !isTotalImmune() &&                            // not totally immune
                //i'm not sure if these two are correct, because invisible players should get visible when they click on flag
                //!HasStealthAura() &&                           // not stealthed
-               !HasInvisibilityAura() &&                      // not invisible
+               //!HasInvisibilityAura() &&                      // not invisible
                isAlive() &&                                   // live player
                !hasUnitState(UNIT_STAT_CAN_NOT_REACT_OR_LOST_CONTROL)  // Nostalrius : en cecite ou fear par exemple
            );

@@ -634,6 +634,8 @@ void Spell::prepareDataForTriggerSystem()
     // Fill flag can spell trigger or not
     // TODO: possible exist spell attribute for this
     m_canTrigger = false;
+    m_procAttacker = PROC_FLAG_NONE;
+    m_procVictim = PROC_FLAG_NONE;
 
     if (m_spellInfo->AttributesEx3 & SPELL_ATTR_EX3_CANT_TRIGGER_PROC)
         m_canTrigger = false;         // Explicitly not allowed to trigger
@@ -705,8 +707,16 @@ void Spell::prepareDataForTriggerSystem()
             }
             else // Ranged spell attack
             {
-                m_procAttacker = PROC_FLAG_SUCCESSFUL_RANGED_SPELL_HIT;
-                m_procVictim   = PROC_FLAG_TAKEN_RANGED_SPELL_HIT;
+                // If blind, don't add proc flags for typical ranged abilities
+                // proc none
+                if (m_spellInfo->Id == 2094) {
+                    m_procAttacker = PROC_FLAG_NONE;
+                    m_procVictim = PROC_FLAG_NONE;
+                }
+                else {
+                    m_procAttacker = PROC_FLAG_SUCCESSFUL_RANGED_SPELL_HIT;
+                    m_procVictim   = PROC_FLAG_TAKEN_RANGED_SPELL_HIT;
+                }
             }
             break;
         default:
@@ -716,6 +726,7 @@ void Spell::prepareDataForTriggerSystem()
             // Hellfire regularly triggers an AoE spell.
             if (m_spellInfo->IsFitToFamily<SPELLFAMILY_WARLOCK, CF_WARLOCK_HELLFIRE>() && m_spellInfo->SpellIconID == 937)
                 aoe = true;
+
             if (IsPositiveSpell(m_spellInfo->Id))                                 // Check for positive spell
             {
                 m_procAttacker = PROC_FLAG_SUCCESSFUL_POSITIVE_SPELL;
@@ -1001,10 +1012,39 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
     // Reset damage/healing counter
     ResetEffectDamageAndHeal();
 
-    // Fill base trigger info
+    // Fill base trigger info. If this is hitting multiple targets, attacker procs should
+    // only apply on the first target aside from some special cases.
     uint32 procAttacker = m_procAttacker;
     uint32 procVictim   = m_procVictim;
     uint32 procEx       = PROC_EX_NONE;
+    
+    // Drop some attacker proc flags if this is a secondary target. Do not need to change
+    // the victim proc flags.
+    if (m_targetNum > 1) {
+        // If this is a melee spell hit, strip the flag and apply a spell hit flag instead.
+        // This is required to proc things like Deep Wounds on the victim when hitting 
+        // multiple targets, but not proc additional melee-only beneficial auras on the 
+        // attacker like Sweeping Strikes. Leave the victim proc flags responding to a melee
+        // spell.
+        if (procAttacker & PROC_FLAG_SUCCESSFUL_MELEE_SPELL_HIT) {
+            procAttacker &= ~(PROC_FLAG_SUCCESSFUL_MELEE_SPELL_HIT);
+            procAttacker |= PROC_FLAG_SUCCESSFUL_NEGATIVE_SPELL_HIT;
+        }
+        else if (procAttacker & (PROC_FLAG_SUCCESSFUL_SPELL_CAST | PROC_FLAG_SUCCESSFUL_MANA_SPELL_CAST)) {
+            // Secondary target on a successful spell cast. Remove these flags so we're not
+            // proccing beneficial auras multiple times. Also remove negative spell hit for
+            // chain lightning + clearcasting. Leave positive effects
+            // eg. Chain heal/lightning & Zandalarian Hero Charm
+            procAttacker &= ~(PROC_FLAG_SUCCESSFUL_SPELL_CAST | PROC_FLAG_SUCCESSFUL_MANA_SPELL_CAST | 
+                              PROC_FLAG_SUCCESSFUL_NEGATIVE_SPELL_HIT);
+        }
+        else if (procAttacker & (PROC_FLAG_SUCCESSFUL_AOE_SPELL_HIT | PROC_FLAG_SUCCESSFUL_NEGATIVE_SPELL_HIT)) {
+            // Do not allow secondary hits for negative aoe spells (such as Arcane Explosion) 
+            // to proc beneficial abilities such as Clearcasting. Positive aoe spells can
+            // still trigger, as in the case of prayer of healing and inspiration...
+            procAttacker &= ~(PROC_FLAG_SUCCESSFUL_AOE_SPELL_HIT | PROC_FLAG_SUCCESSFUL_NEGATIVE_SPELL_HIT);
+        }
+    }
 
     // drop proc flags in case target not affected negative effects in negative spell
     // for example caster bonus or animation,
@@ -1045,7 +1085,8 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
             if (real_caster && real_caster != unit)
             {
                 // can cause back attack (if detected)
-                bool backAttack = !(m_spellInfo->AttributesEx3 & SPELL_ATTR_EX3_NO_INITIAL_AGGRO) && !IsPositiveSpell(m_spellInfo->Id) && m_caster->isVisibleForOrDetect(unit, unit, false);
+                bool backAttack = m_spellInfo->Id != 3600 && // Earthbind never set in combat
+                    !IsPositiveSpell(m_spellInfo->Id) && m_caster->isVisibleForOrDetect(unit, unit, false);
                 if (IsSpellHaveAura(m_spellInfo, SPELL_AURA_MOD_POSSESS))
                     backAttack = false;
                 // Pickpocket can cause back attack if failed
@@ -2961,10 +3002,17 @@ void Spell::prepare(SpellCastTargets const* targets, Aura* triggeredByAura)
         // set timer base at cast time
         ReSetTimer();
 
-        // Si m_timer=0, le cast a lieu au prochain tic, et c'est la qu'il faut retirer
-        // ou non les auras d'invisibilite
-        if (m_timer)
+        // If timer = 0, it's an instant cast spell and will be casted on the next tick.
+        // Cast completion will remove all any stealth/invis auras
+        if (m_timer) {
             RemoveStealthAuras();
+            
+            // If using a game object we need to remove any remaining invis auras. Should only
+            // ever be Gnomish Cloaking Device, since it's a special case and not removed on
+            // opcode receive
+            if (m_caster->IsPlayer() && m_targets.getGOTarget())
+                m_caster->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ON_CAST_SPELL);
+        }
 
         OnSpellLaunch();
 
@@ -3249,6 +3297,9 @@ void Spell::cast(bool skipCheck)
     }
 
     // CAST SPELL
+    // Remove any remaining invis auras on cast completion, should only be gnomish cloaking device
+    m_caster->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_ON_CAST_SPELL);
+    
     SendSpellCooldown();
 
     TakePower();
@@ -4406,6 +4457,10 @@ void Spell::TakeReagents()
 
 void Spell::TakeAmmo()
 {
+    // Blind is a ranged attack but should not take any ammo
+    if (m_spellInfo->Id == 2094)
+        return;
+            
     if (m_attackType == RANGED_ATTACK && m_caster->GetTypeId() == TYPEID_PLAYER)
     {
         Item *pItem = ((Player*)m_caster)->GetWeaponForAttack(RANGED_ATTACK, true, false);
